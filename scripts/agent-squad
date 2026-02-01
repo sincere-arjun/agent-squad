@@ -249,10 +249,28 @@ function configTaskSystem(system, options) {
     console.log('\nMake sure you have:');
     console.log('  - linear skill installed');
     console.log('  - Linear API key configured');
+    console.log('\nUsage in SOUL.md:');
+    console.log('  linear issues --team "Your Team" | grep "Title"');
+    console.log('  linear issue:create --title "Task" --description "Details"');
   } else if (system === 'trello') {
     console.log('\nMake sure you have:');
     console.log('  - trello skill installed');
     console.log('  - Trello API key/token configured');
+    console.log('\nUsage in SOUL.md:');
+    console.log('  trello boards');
+    console.log('  trello board --board-id <id>');
+    console.log('  trello card:create --name "Task" --list-id <id>');
+  } else if (system === 'github') {
+    console.log('\nMake sure you have:');
+    console.log('  - github skill installed');
+    console.log('  - GitHub token configured');
+    console.log('\nUsage in SOUL.md:');
+    console.log('  github issue list --repo owner/repo');
+    console.log('  github issue:create --title "Task" --body "Details"');
+  } else if (system === 'file') {
+    console.log('\nFile-based task system:');
+    console.log('  Tasks stored in ~/.config/agent-squad/<squad>/tasks/');
+    console.log('  Markdown files with YAML frontmatter');
   }
 }
 
@@ -267,6 +285,7 @@ function startHeartbeats() {
   }
 
   const squadPath = getSquadPath(squadName);
+  const squadConfig = JSON.parse(fs.readFileSync(path.join(squadPath, 'squad.json'), 'utf8'));
   const agentsPath = path.join(squadPath, 'agents');
   
   if (!fs.existsSync(agentsPath)) {
@@ -280,6 +299,18 @@ function startHeartbeats() {
 
   console.log(`Starting heartbeats for ${agents.length} agents...\n`);
 
+  // Build task-system-specific guidance
+  let taskSystemGuidance = '';
+  if (squadConfig.taskSystem === 'linear') {
+    taskSystemGuidance = 'Use "linear issues" to check tasks. Post comments via Linear. Use labels for status.';
+  } else if (squadConfig.taskSystem === 'trello') {
+    taskSystemGuidance = 'Use "trello boards" to find boards. Check cards in lists. Post updates as comments. Move cards between lists for status.';
+  } else if (squadConfig.taskSystem === 'github') {
+    taskSystemGuidance = 'Use "github issue list" to check tasks. Post comments on issues. Use labels for status.';
+  } else {
+    taskSystemGuidance = 'Check the configured task system for assigned work.';
+  }
+
   for (const agent of agents) {
     const agentConfig = JSON.parse(fs.readFileSync(
       path.join(agentsPath, agent, 'config.json'),
@@ -292,7 +323,7 @@ function startHeartbeats() {
     }
 
     // Build heartbeat message
-    const heartbeatMsg = `You are ${agentConfig.name}, ${agentConfig.role}. Read AGENTS.md and SOUL.md. Check the task system (${squadConfig.taskSystem}) for assigned work, @mentions, and activity. Do your work and post updates. If nothing needs attention, reply HEARTBEAT_OK.`;
+    const heartbeatMsg = `You are ${agentConfig.name}, ${agentConfig.role}. Read AGENTS.md and SOUL.md. ${taskSystemGuidance} Check for assigned work, @mentions, and activity. Do your work and post updates. If nothing needs attention, reply HEARTBEAT_OK.`;
 
     // Add cron job via openclaw
     try {

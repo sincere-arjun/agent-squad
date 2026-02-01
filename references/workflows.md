@@ -12,6 +12,8 @@ Pre-configured agent squads for common use cases.
 - Loki (Writer) — Writes the content
 - Jarvis (Lead) — Coordinates, reports to human
 
+### With Linear
+
 **Setup:**
 ```bash
 agent-squad init content-squad
@@ -32,6 +34,32 @@ agent-squad start
 6. Jarvis notifies human: "Draft ready for review"
 
 **Task States:**
+- Backlog → SEO Research → Research → Writing → Review → Done
+
+### With Trello
+
+**Setup:**
+```bash
+agent-squad init content-squad
+agent-squad add fury --role "Researcher" --personality skeptical
+agent-squad add vision --role "SEO Analyst" --personality analytical
+agent-squad add loki --role "Content Writer" --personality creative
+agent-squad add jarvis --role "Squad Lead"
+agent-squad config --tasks trello
+agent-squad start
+```
+
+**Workflow:**
+1. Human creates Trello card: "Blog: [Topic]" in "Backlog" list
+2. Jarvis moves card to "SEO Research", assigns Vision
+3. Vision posts checklist with target keywords
+4. Jarvis moves to "Research", assigns Fury
+5. Fury researches, adds checklist items with sources
+6. Jarvis moves to "Writing", assigns Loki
+7. Loki writes, attaches draft link, moves to "Review"
+8. Jarvis notifies human via Telegram
+
+**Trello Lists:**
 - Backlog → SEO Research → Research → Writing → Review → Done
 
 ---
@@ -97,6 +125,8 @@ agent-squad start
 
 **Goal:** Daily progress summary to human.
 
+### With Linear
+
 **Add to Jarvis (Lead) config:**
 ```bash
 # Additional cron for daily standup
@@ -105,6 +135,18 @@ openclaw cron add \
   --cron "0 9 * * *" \
   --session "isolated" \
   --message "Compile yesterday's activity from Linear. Send standup summary to human via Telegram. Include: completed tasks, in-progress, blockers."
+```
+
+### With Trello
+
+**Add to Jarvis (Lead) config:**
+```bash
+# Additional cron for daily standup
+openclaw cron add \
+  --name "squad-standup" \
+  --cron "0 9 * * *" \
+  --session "isolated" \
+  --message "Check Trello board for cards moved to Done yesterday. Check cards in Writing/Review. Compile standup summary and send to human via Telegram."
 ```
 
 **Standup Format:**
@@ -152,6 +194,8 @@ openclaw cron add \
 
 **Standard content workflow:**
 
+### With Linear
+
 **Hour 0:** Task created
 - Human: Create issue "Blog: [Topic]"
 - Jarvis: Assigns to researcher
@@ -177,6 +221,34 @@ openclaw cron add \
 - Human: Edits/approves in GitHub/Linear
 - Human: Comments "Approved, publish"
 - Jarvis: Moves to "Done"
+
+### With Trello
+
+**Hour 0:** Task created
+- Human: Create card "Blog: [Topic]" in "Backlog"
+- Jarvis: Moves to "Research" list, assigns Fury
+
+**Hour 0-1:** Research phase
+- Fury heartbeat: Sees card in Research
+- Fury: Researches, adds checklist with findings
+- Fury: Comments "Research complete @loki"
+- Jarvis: Moves card to "Writing"
+
+**Hour 1-2:** Writing phase
+- Loki heartbeat: Sees card in Writing
+- Loki: Reads checklist, writes draft
+- Loki: Attaches draft link, comments "Draft ready @jarvis"
+- Jarvis: Moves card to "Review"
+
+**Hour 2-3:** Review phase
+- Jarvis heartbeat: Sees card in Review
+- Jarvis: Reviews draft quality
+- Jarvis: Telegram to human: "Draft ready: [link]"
+
+**Hour 3+:** Human review
+- Human: Edits/approves draft
+- Human: Comments "Approved"
+- Jarvis: Moves card to "Done"
 
 ---
 
