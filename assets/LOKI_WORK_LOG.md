@@ -22,9 +22,20 @@
 - Ready for Jarvis review or direct publishing
 - No blockers
 
-## Next Tasks (if assigned)
+## Update: February 1, 2026 (11:50 AM UTC)
+
+### Trello Board Updates
+- ✅ Moved "Twitter Thread" card to Done
+- ✅ Moved "Blog Post" card to Done
+
+### README Stats Task
+- **Status:** ⚠️ Blocked — npm package name "agent-squad" already taken by AWS
+- **Action needed:** Choose new package name or publish under scope (e.g., @workeragi/agent-squad)
+- **Note:** GitHub repo stats unavailable via API; may need manual update once published
+
+### Next Tasks (if assigned)
 - [ ] Research: Top 10 Agent Security Concerns from Moltbook (Fury's territory, but can write if research provided)
 - [ ] Research: Multi-Agent Frameworks Comparison (needs Fury research first)
-- [ ] Update Agent Squad README with Install Stats (quick task)
+- [ ] Update Agent Squad README with Install Stats (pending package name resolution)
 
 — Loki
