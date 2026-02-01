@@ -1,0 +1,474 @@
+#!/usr/bin/env node
+/**
+ * agent-squad — Manage teams of AI agents
+ * 
+ * Usage: agent-squad <command> [options]
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+const SQUAD_DIR = path.join(process.env.HOME, '.config/agent-squad');
+const CONFIG_FILE = path.join(SQUAD_DIR, 'config.json');
+
+// Ensure squad directory exists
+function ensureSquadDir() {
+  if (!fs.existsSync(SQUAD_DIR)) {
+    fs.mkdirSync(SQUAD_DIR, { recursive: true });
+  }
+}
+
+// Load or create config
+function loadConfig() {
+  ensureSquadDir();
+  if (fs.existsSync(CONFIG_FILE)) {
+    return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+  }
+  return { squads: [], activeSquad: null };
+}
+
+function saveConfig(config) {
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
+
+// Get squad path
+function getSquadPath(name) {
+  return path.join(SQUAD_DIR, name);
+}
+
+// Initialize new squad
+function initSquad(name) {
+  const squadPath = getSquadPath(name);
+  
+  if (fs.existsSync(squadPath)) {
+    console.error(`Squad "${name}" already exists.`);
+    process.exit(1);
+  }
+
+  fs.mkdirSync(squadPath, { recursive: true });
+  fs.mkdirSync(path.join(squadPath, 'agents'), { recursive: true });
+  
+  const squadConfig = {
+    name,
+    created: new Date().toISOString(),
+    taskSystem: null,
+    taskConfig: {}
+  };
+  
+  fs.writeFileSync(
+    path.join(squadPath, 'squad.json'),
+    JSON.stringify(squadConfig, null, 2)
+  );
+
+  // Create default AGENTS.md
+  const agentsMd = `# AGENTS.md — ${name} Squad Operations
+
+## Mission
+
+[Define your squad's mission here]
+
+## Communication Rules
+
+1. All task discussion happens in the task system (Linear/Trello/etc)
+2. Use @mentions to notify specific agents
+3. When research is ready, @mention the writer
+4. When draft is ready, @mention the lead
+5. Lead reports to human when deliverables are ready
+
+## File Conventions
+
+- Research notes: \`research/YYYY-MM-DD-topic.md\`
+- Drafts: \`drafts/YYYY-MM-DD-topic.md\`
+- Published: \`published/YYYY-MM-DD-topic.md\`
+
+## When to Escalate to Human
+
+- Missing critical information
+- Conflicting research findings
+- Task blocked >24 hours
+- Unclear requirements
+`;
+
+  fs.writeFileSync(path.join(squadPath, 'AGENTS.md'), agentsMd);
+
+  // Update global config
+  const config = loadConfig();
+  config.squads.push(name);
+  config.activeSquad = name;
+  saveConfig(config);
+
+  console.log(`✅ Squad "${name}" initialized`);
+  console.log(`   Location: ${squadPath}`);
+  console.log(`\nNext steps:`);
+  console.log(`  agent-squad add <agent-name> --role "Description"`);
+  console.log(`  agent-squad config --tasks linear`);
+}
+
+// Add agent to squad
+function addAgent(name, options) {
+  const config = loadConfig();
+  const squadName = config.activeSquad;
+  
+  if (!squadName) {
+    console.error('No active squad. Run: agent-squad init <name>');
+    process.exit(1);
+  }
+
+  const squadPath = getSquadPath(squadName);
+  const agentPath = path.join(squadPath, 'agents', name);
+  
+  if (fs.existsSync(agentPath)) {
+    console.error(`Agent "${name}" already exists in squad.`);
+    process.exit(1);
+  }
+
+  fs.mkdirSync(agentPath, { recursive: true });
+
+  const role = options.role || 'General purpose agent';
+  const personality = options.personality || 'balanced';
+  const schedule = options.schedule || '*/15 * * * *';
+  const model = options.model || 'kimi-code';
+
+  // Create SOUL.md
+  const soulMd = generateSOUL(name, role, personality);
+  fs.writeFileSync(path.join(agentPath, 'SOUL.md'), soulMd);
+
+  // Copy AGENTS.md
+  fs.copyFileSync(
+    path.join(squadPath, 'AGENTS.md'),
+    path.join(agentPath, 'AGENTS.md')
+  );
+
+  // Create agent config
+  const agentConfig = {
+    name,
+    role,
+    personality,
+    schedule,
+    model,
+    sessionKey: `agent:${name}:main`,
+    enabled: false
+  };
+  
+  fs.writeFileSync(
+    path.join(agentPath, 'config.json'),
+    JSON.stringify(agentConfig, null, 2)
+  );
+
+  console.log(`✅ Agent "${name}" added to squad "${squadName}"`);
+  console.log(`   Session: ${agentConfig.sessionKey}`);
+  console.log(`   Schedule: ${schedule}`);
+  console.log(`\nEdit personality: agent-squad edit ${name}`);
+  console.log(`Start heartbeats: agent-squad start`);
+}
+
+// Generate SOUL.md content
+function generateSOUL(name, role, personality) {
+  const personalities = {
+    skeptical: `Skeptical and thorough. Questions assumptions. Finds edge cases.`,
+    creative: `Creative and exploratory. Generates novel ideas. Thinks outside the box.`,
+    analytical: `Analytical and precise. Data-driven. Focuses on accuracy.`,
+    balanced: `Balanced and practical. Adapts to the task at hand.`
+  };
+
+  return `# SOUL.md — Who You Are
+
+**Name:** ${name}
+**Role:** ${role}
+
+## Personality
+${personalities[personality] || personalities.balanced}
+
+## What You're Good At
+- [Add specific strengths]
+- [Add domain expertise]
+- [Add preferred work style]
+
+## What You Care About
+- [Add values and priorities]
+- [Add pet peeves or preferences]
+
+## Your Tools
+- Read the SKILL.md files for available tools
+- Use tools appropriate to your role
+
+## How You Work
+1. Read AGENTS.md on every heartbeat
+2. Check task system for assigned work
+3. Do your work thoroughly
+4. Post updates and @mention relevant agents
+5. Report HEARTBEAT_OK if nothing to do
+
+## Squad Context
+You are part of a multi-agent squad. Coordinate via the shared task system.
+Follow the communication rules in AGENTS.md.
+`;
+}
+
+// Edit agent SOUL.md
+function editAgent(name) {
+  const config = loadConfig();
+  const squadName = config.activeSquad;
+  const editor = process.env.EDITOR || 'nano';
+  
+  const soulPath = path.join(getSquadPath(squadName), 'agents', name, 'SOUL.md');
+  
+  if (!fs.existsSync(soulPath)) {
+    console.error(`Agent "${name}" not found.`);
+    process.exit(1);
+  }
+
+  execSync(`${editor} "${soulPath}"`, { stdio: 'inherit' });
+}
+
+// Configure task system
+function configTaskSystem(system, options) {
+  const config = loadConfig();
+  const squadName = config.activeSquad;
+  
+  if (!squadName) {
+    console.error('No active squad. Run: agent-squad init <name>');
+    process.exit(1);
+  }
+
+  const squadPath = getSquadPath(squadName);
+  const squadConfig = JSON.parse(fs.readFileSync(path.join(squadPath, 'squad.json'), 'utf8'));
+  
+  squadConfig.taskSystem = system;
+  squadConfig.taskConfig = options;
+  
+  fs.writeFileSync(
+    path.join(squadPath, 'squad.json'),
+    JSON.stringify(squadConfig, null, 2)
+  );
+
+  console.log(`✅ Task system set to: ${system}`);
+  
+  if (system === 'linear') {
+    console.log('\nMake sure you have:');
+    console.log('  - linear skill installed');
+    console.log('  - Linear API key configured');
+  } else if (system === 'trello') {
+    console.log('\nMake sure you have:');
+    console.log('  - trello skill installed');
+    console.log('  - Trello API key/token configured');
+  }
+}
+
+// Start all heartbeats
+function startHeartbeats() {
+  const config = loadConfig();
+  const squadName = config.activeSquad;
+  
+  if (!squadName) {
+    console.error('No active squad.');
+    process.exit(1);
+  }
+
+  const squadPath = getSquadPath(squadName);
+  const agentsPath = path.join(squadPath, 'agents');
+  
+  if (!fs.existsSync(agentsPath)) {
+    console.error('No agents configured.');
+    process.exit(1);
+  }
+
+  const agents = fs.readdirSync(agentsPath).filter(f => {
+    return fs.statSync(path.join(agentsPath, f)).isDirectory();
+  });
+
+  console.log(`Starting heartbeats for ${agents.length} agents...\n`);
+
+  for (const agent of agents) {
+    const agentConfig = JSON.parse(fs.readFileSync(
+      path.join(agentsPath, agent, 'config.json'),
+      'utf8'
+    ));
+
+    if (agentConfig.enabled) {
+      console.log(`  ⏭️  ${agent} (already enabled)`);
+      continue;
+    }
+
+    // Build heartbeat message
+    const heartbeatMsg = `You are ${agentConfig.name}, ${agentConfig.role}. Read AGENTS.md and SOUL.md. Check the task system (${squadConfig.taskSystem}) for assigned work, @mentions, and activity. Do your work and post updates. If nothing needs attention, reply HEARTBEAT_OK.`;
+
+    // Add cron job via openclaw
+    try {
+      execSync(`openclaw cron add \\
+        --name "${squadName}-${agent}-heartbeat" \\
+        --cron "${agentConfig.schedule}" \\
+        --session "isolated" \\
+        --message "${heartbeatMsg}"`, { stdio: 'pipe' });
+      
+      agentConfig.enabled = true;
+      fs.writeFileSync(
+        path.join(agentsPath, agent, 'config.json'),
+        JSON.stringify(agentConfig, null, 2)
+      );
+      
+      console.log(`  ✅ ${agent} — ${agentConfig.schedule}`);
+    } catch (err) {
+      console.log(`  ❌ ${agent} — failed to add cron`);
+    }
+  }
+
+  console.log('\nHeartbeat cron jobs added.');
+  console.log('Agents will wake according to their schedules.');
+}
+
+// Stop all heartbeats
+function stopHeartbeats() {
+  const config = loadConfig();
+  const squadName = config.activeSquad;
+  
+  if (!squadName) {
+    console.error('No active squad.');
+    process.exit(1);
+  }
+
+  const squadPath = getSquadPath(squadName);
+  const agentsPath = path.join(squadPath, 'agents');
+  
+  if (!fs.existsSync(agentsPath)) {
+    console.log('No agents configured.');
+    return;
+  }
+
+  const agents = fs.readdirSync(agentsPath).filter(f => {
+    return fs.statSync(path.join(agentsPath, f)).isDirectory();
+  });
+
+  console.log(`Stopping heartbeats for ${agents.length} agents...\n`);
+
+  for (const agent of agents) {
+    const agentConfigPath = path.join(agentsPath, agent, 'config.json');
+    const agentConfig = JSON.parse(fs.readFileSync(agentConfigPath, 'utf8'));
+
+    if (!agentConfig.enabled) {
+      console.log(`  ⏭️  ${agent} (already disabled)`);
+      continue;
+    }
+
+    try {
+      execSync(`openclaw cron remove --name "${squadName}-${agent}-heartbeat"`, { stdio: 'pipe' });
+      
+      agentConfig.enabled = false;
+      fs.writeFileSync(agentConfigPath, JSON.stringify(agentConfig, null, 2));
+      
+      console.log(`  ✅ ${agent} — stopped`);
+    } catch (err) {
+      console.log(`  ❌ ${agent} — failed to remove cron`);
+    }
+  }
+
+  console.log('\nHeartbeat cron jobs removed.');
+}
+
+// Show squad status
+function showStatus() {
+  const config = loadConfig();
+  
+  console.log('Agent Squad Status\n');
+  console.log(`Active Squad: ${config.activeSquad || '(none)'}`);
+  console.log(`All Squads: ${config.squads.join(', ') || '(none)'}`);
+  
+  if (config.activeSquad) {
+    const squadPath = getSquadPath(config.activeSquad);
+    const squadConfig = JSON.parse(fs.readFileSync(
+      path.join(squadPath, 'squad.json'),
+      'utf8'
+    ));
+    
+    console.log(`\nTask System: ${squadConfig.taskSystem || '(not configured)'}`);
+    
+    const agentsPath = path.join(squadPath, 'agents');
+    if (fs.existsSync(agentsPath)) {
+      const agents = fs.readdirSync(agentsPath).filter(f => {
+        return fs.statSync(path.join(agentsPath, f)).isDirectory();
+      });
+      
+      console.log(`\nAgents (${agents.length}):`);
+      for (const agent of agents) {
+        const agentConfig = JSON.parse(fs.readFileSync(
+          path.join(agentsPath, agent, 'config.json'),
+          'utf8'
+        ));
+        const status = agentConfig.enabled ? '🟢' : '⚪';
+        console.log(`  ${status} ${agent} — ${agentConfig.role} (${agentConfig.schedule})`);
+      }
+    }
+  }
+}
+
+// CLI argument parsing
+function parseArgs(args) {
+  const options = {};
+  const positional = [];
+  
+  for (let i = 0; i < args.length; i++) {
+    if (args[i].startsWith('--')) {
+      const key = args[i].slice(2);
+      if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+        options[key] = args[i + 1];
+        i++;
+      } else {
+        options[key] = true;
+      }
+    } else {
+      positional.push(args[i]);
+    }
+  }
+  
+  return { command: positional[0], args: positional.slice(1), options };
+}
+
+// Main
+function main() {
+  const { command, args, options } = parseArgs(process.argv.slice(2));
+
+  switch (command) {
+    case 'init':
+      initSquad(args[0]);
+      break;
+    case 'add':
+      addAgent(args[0], options);
+      break;
+    case 'edit':
+      editAgent(args[0]);
+      break;
+    case 'config':
+      configTaskSystem(options.tasks, options);
+      break;
+    case 'start':
+      startHeartbeats();
+      break;
+    case 'stop':
+      stopHeartbeats();
+      break;
+    case 'status':
+      showStatus();
+      break;
+    default:
+      console.log('Agent Squad — Multi-agent orchestration for OpenClaw\n');
+      console.log('Commands:');
+      console.log('  init <name>              Create new squad');
+      console.log('  add <name> [options]     Add agent to squad');
+      console.log('    --role "Description"');
+      console.log('    --personality skeptical|creative|analytical');
+      console.log('    --schedule "*/15 * * * *"');
+      console.log('  edit <name>              Edit agent SOUL.md');
+      console.log('  config --tasks <system>  Configure task system');
+      console.log('  start                    Start all heartbeats');
+      console.log('  stop                     Stop all heartbeats');
+      console.log('  status                   Show squad status');
+      console.log('\nExample:');
+      console.log('  agent-squad init content-squad');
+      console.log('  agent-squad add researcher --role "Deep researcher"');
+      console.log('  agent-squad config --tasks linear');
+      console.log('  agent-squad start');
+  }
+}
+
+main();

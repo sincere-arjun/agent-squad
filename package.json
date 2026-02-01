@@ -1,0 +1,33 @@
+{
+  "name": "agent-squad",
+  "version": "1.0.0",
+  "description": "Multi-agent orchestration for OpenClaw — create teams of AI agents that collaborate on tasks",
+  "main": "scripts/agent-squad",
+  "bin": {
+    "agent-squad": "./scripts/agent-squad"
+  },
+  "scripts": {
+    "test": "echo \"Tests not implemented yet\""
+  },
+  "keywords": [
+    "openclaw",
+    "ai-agent",
+    "multi-agent",
+    "agent-squad",
+    "automation",
+    "workflow"
+  ],
+  "author": "Tony Stark & Orion",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sincere-arjun/agent-squad.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sincere-arjun/agent-squad/issues"
+  },
+  "homepage": "https://github.com/sincere-arjun/agent-squad#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
